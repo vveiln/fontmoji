@@ -1,68 +1,82 @@
 import json
 from PIL import Image, ImageFont, ImageDraw
 
-herb = "\U0001F33F"
-pretzel = u"\U0001F968"
+# some emoji codes
+herb = '\U0001F33F'
+pretzel = '\U0001F968'
+peach = '\U0001f351'
 
-emoji = pretzel
+FONT_FILE = './NotoColorEmoji.ttf'
+FONT_SIZE = 109
+FONT = ImageFont.truetype(FONT_FILE, size=FONT_SIZE, layout_engine=ImageFont.LAYOUT_RAQM)
 
+EMOJI = peach
 
-def emojize(cfg, fnt):
-    
-    c = cfg["c"]
-    assert(len(c) == 7)
+# each emoji letter contains 7 emoji lines,
+#the first and the last lines are used for superscripts and subscripts
+LETTER_HEIGHT = 7 
+EMOJI_DISTANCE = 27
 
-    width = (109 + 27) * cfg["width"]
-    height = 109 * (1 + 5 + 1) + 20 * 6
-    img = Image.new("RGBA", (width, height), (256, 256, 256, 256))
+LINE_DISTANCE = 20
+LINE_HEIGHT = FONT_SIZE * LETTER_HEIGHT + LINE_DISTANCE * (LETTER_HEIGHT - 1)
+
+BACKGROUND_COLOR = (256, 256, 256, 256) #white
+#BACKGROUND_COLOR = (0, 0, 0, 256)
+
+LETTER_DISTANCE_WIDTH = EMOJI_DISTANCE * 3
+LETTER_DISTANCE = Image.new('RGBA', (LETTER_DISTANCE_WIDTH, LINE_HEIGHT), BACKGROUND_COLOR)
+
+def emojize_letter(cfg):    
+    desc = cfg['desc']
+    assert(len(desc) == LETTER_HEIGHT)
+
+    columns = cfg['columns']
+    width = (FONT_SIZE + EMOJI_DISTANCE) * columns
+    img = Image.new('RGBA', (width, LINE_HEIGHT), BACKGROUND_COLOR)
     draw = ImageDraw.Draw(img)
     
-    for i in range(7):
-        line = ""
-        cur = c[i]
-        assert(len(cur) == cfg["width"])
-        for j in cur:
-            if j == "x":
-                line += emoji
+    for i in range(LETTER_HEIGHT):
+        line = ''
+        row = desc[i]
+        assert(len(row) == columns)
+        for j in row:
+            if j == 'x':
+                line += EMOJI
             else:
-                line += " "
-        draw.text((0, (109 + 20) * i), line, fill = (256, 256, 256), embedded_color=True, font = fnt)
+                line += ' '
+        LINE_SHIFT = (FONT_SIZE + LINE_DISTANCE) * i
+        draw.text((0, LINE_SHIFT), line, fill = BACKGROUND_COLOR, embedded_color=True, font = FONT)
     return img
 
 def concat(imgs):
-    width = sum([im.width for im in imgs])
-    dst = Image.new('RGB', (width, imgs[0].height))
-    w = 0
+    width = sum([im.width for im in imgs]) + LETTER_DISTANCE_WIDTH * (len(imgs) + 1)
+    dst = Image.new('RGBA', (width, imgs[0].height), BACKGROUND_COLOR)
+    dst.paste(LETTER_DISTANCE, (0, 0))
+    w = LETTER_DISTANCE_WIDTH
     for i in imgs:
         dst.paste(i, (w, 0))
-        w += i.width
+        dst.paste(LETTER_DISTANCE,(w + i.width, 0))
+        w += i.width + LETTER_DISTANCE_WIDTH
     return dst
 
-if __name__ == "__main__":
-    font = "./NotoColorEmoji.ttf"
-    size = 109
-    space = 27
+def concat_lines(imgs):
+    height = sum([im.height for im in imgs])
+    dst = Image.new('RGBA', (max([i.width for i in imgs]), height), BACKGROUND_COLOR)
+    h = 0
+    for i in imgs:
+        dst.paste(i, (0, h))
+        h += i.height
+    return dst
 
-    fnt = ImageFont.truetype(font, size=size, layout_engine=ImageFont.LAYOUT_RAQM)
-    im = Image.new("RGBA", (800, 700), (256, 256, 256, 256))
-
-
-    cfg1 = {"width": 3, "c": ["qqq", "xxx", "qxq", "qxq", "qxq", "xxx", "qqq"]}
-    cfg2 = {"width": 5, "c": ["qqqqq", "xqqqx", "xxqxx", "xqxqx", "xqqqx", "xqqqx", "qqqqq"]}
-    cfga = {"width": 3, "c": ["qqq", "qxq", "xqx", "xqx", "xxx", "xqx", "qqq"]}
-    cfgap = {"width": 1, "c": ["q", "x", "x", "q", "q", "q", "q"]}
-    cfgcomma = {"width": 2, "c": ["qq", "qq", "qq", "qq", "qq", "xq", "xq"]}
-    #cfg = {"size":(1, 2), "offset": 0, "c": ["x", "x"]}
-    buf = Image.new("RGBA", (27 * 3, (109 * 7 + 20 * 6)), (256, 256, 256, 256))
-    img1 = emojize(cfg1, fnt)
-    img2 = emojize(cfg2, fnt)
-    imga = emojize(cfga, fnt)
-    imgap = emojize(cfgap, fnt)
-    imgcomma = emojize(cfgcomma, fnt)
-   
-    with open("./letters.json", "r") as f:
+def emojize(sentence):
+    with open('./letters.json', 'r') as f:
         cfg = json.load(f)
-    imgb = emojize(cfg["?"], fnt)
+    
+    lines = [concat([emojize_letter(cfg[l]) for l in phrase]) for phrase in sentence.upper().split('\n')]
+    img = concat_lines(lines)
+    return img
 
-
-    concat([img1, buf, img2, buf, img2, buf, imga, buf, imgcomma, buf, imga, buf, imgb]).save("out.png")
+if __name__ == '__main__':
+    sentence = 'fontmoji'
+    img = emojize(sentence)
+    img.save("out.png")
